@@ -255,6 +255,28 @@ if (twap) {
 }
 ```
 
+## Native XLM
+
+The SDK supports the native Stellar asset (XLM) via the Stellar Asset Contract (SAC). You can pass `"XLM"` or `"native"` as a token identifier in swap and multi-hop methods; it is resolved to the network’s XLM SAC address automatically.
+
+```typescript
+import { getNativeAssetContractAddress, resolveTokenIdentifier, isNativeToken } from "@coralswap/sdk";
+
+// Resolve "XLM" to the SAC contract address for the current network
+const passphrase = client.networkConfig.networkPassphrase;
+const xlmAddress = getNativeAssetContractAddress(passphrase);
+
+// Or resolve any identifier (e.g. "XLM" or a contract address)
+const resolved = resolveTokenIdentifier("XLM", passphrase);
+
+// Check if an identifier is native XLM
+if (isNativeToken("XLM")) {
+  // use resolved address for contract calls
+}
+```
+
+Swap and multi-hop methods accept `"XLM"` as `tokenIn`/`tokenOut` or as an element in `path`; no need to look up the SAC address when using the high-level API.
+
 ## Utilities
 
 ```typescript

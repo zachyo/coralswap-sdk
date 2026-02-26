@@ -3,6 +3,8 @@ import {
   isValidContractId,
   isValidAddress,
   isNativeToken,
+  getNativeAssetContractAddress,
+  resolveTokenIdentifier,
   sortTokens,
   truncateAddress,
   getPairAddress,
@@ -74,6 +76,43 @@ describe('Address Utilities', () => {
     it('returns false for arbitrary asset identifiers', () => {
       expect(isNativeToken('USDC')).toBe(false);
       expect(isNativeToken('TOKEN:ISSUER')).toBe(false);
+    });
+  });
+
+  describe('getNativeAssetContractAddress', () => {
+    const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+    const MAINNET_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
+    it('returns a valid contract ID for testnet', () => {
+      const addr = getNativeAssetContractAddress(TESTNET_PASSPHRASE);
+      expect(addr).toMatch(/^C[A-Z0-9]{55}$/);
+      expect(isValidContractId(addr)).toBe(true);
+    });
+
+    it('returns a valid contract ID for mainnet', () => {
+      const addr = getNativeAssetContractAddress(MAINNET_PASSPHRASE);
+      expect(isValidContractId(addr)).toBe(true);
+    });
+
+    it('returns different addresses for different networks', () => {
+      const testnet = getNativeAssetContractAddress(TESTNET_PASSPHRASE);
+      const mainnet = getNativeAssetContractAddress(MAINNET_PASSPHRASE);
+      expect(testnet).not.toBe(mainnet);
+    });
+  });
+
+  describe('resolveTokenIdentifier', () => {
+    const PASSPHRASE = 'Test SDF Network ; September 2015';
+
+    it('resolves XLM to native SAC address', () => {
+      const resolved = resolveTokenIdentifier('XLM', PASSPHRASE);
+      expect(resolved).toMatch(/^C[A-Z0-9]{55}$/);
+      expect(resolved).toBe(getNativeAssetContractAddress(PASSPHRASE));
+    });
+
+    it('returns contract address unchanged', () => {
+      const addr = VALID_CONTRACT;
+      expect(resolveTokenIdentifier(addr, PASSPHRASE)).toBe(addr);
     });
   });
 

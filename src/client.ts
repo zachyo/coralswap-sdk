@@ -4,23 +4,19 @@ import {
   TransactionBuilder,
   Transaction,
   xdr,
-} from "@stellar/stellar-sdk";
-import {
-  CoralSwapConfig,
-  NetworkConfig,
-  NETWORK_CONFIGS,
-  DEFAULTS,
-} from "@/config";
-import { Network, Result, Logger, Signer } from "@/types/common";
-import { SignerError } from "@/errors";
-import { FactoryClient } from "@/contracts/factory";
-import { PairClient } from "@/contracts/pair";
-import { RouterClient } from "@/contracts/router";
-import { LPTokenClient } from "@/contracts/lp-token";
-import { TokenListModule } from "@/modules/tokens";
-import { KeypairSigner } from "@/utils/signer";
-import { withRetry, RetryOptions } from "@/utils/retry";
-export { KeypairSigner };
+} from '@stellar/stellar-sdk';
+import { CoralSwapConfig, NetworkConfig, NETWORK_CONFIGS, DEFAULTS } from '@/config';
+import { Network, Result, Logger, Signer } from '@/types/common';
+import { SignerError } from '@/errors';
+import { FactoryClient } from '@/contracts/factory';
+import { PairClient } from '@/contracts/pair';
+import { RouterClient } from '@/contracts/router';
+import { LPTokenClient } from '@/contracts/lp-token';
+import { TokenListModule } from '@/modules/tokens';
+import { FactoryModule } from '@/modules/factory';
+import { KeypairSigner } from '@/utils/signer';
+import { TransactionPoller, PollingStrategy, PollingOptions } from '@/utils/polling';
+export { KeypairSigner, PollingStrategy, PollingOptions };
 
 /**
  * Default signer implementation that wraps a Stellar Keypair.
@@ -45,6 +41,7 @@ export class CoralSwapClient {
   private _publicKeyCache: string | null = null;
   private _factory: FactoryClient | null = null;
   private _router: RouterClient | null = null;
+  private _factoryModule: FactoryModule | null = null;
   private readonly logger?: Logger;
 
   /**
@@ -105,6 +102,16 @@ export class CoralSwapClient {
     }
 
     this.logger = config.logger;
+  }
+
+  /**
+   * Get the transaction poller instance.
+   */
+  poller(): TransactionPoller {
+    if (!this._poller) {
+      this._poller = new TransactionPoller(this.server, this.logger);
+    }
+    return this._poller;
   }
 
   /**
@@ -210,6 +217,11 @@ export class CoralSwapClient {
     this._factory = null;
     this._router = null;
 
+    // Reset factory module cache
+    if (this._factoryModule) {
+      this._factoryModule.clearCache();
+    }
+
     // Refresh signer if using built-in KeypairSigner
     if (this.config.secretKey) {
       const kpSigner = new KeypairSigner(
@@ -247,10 +259,20 @@ export class CoralSwapClient {
   }
 
   /**
+   * Access the Factory module (cached lookups).
+   */
+  factoryModule(): FactoryModule {
+    if (!this._factoryModule) {
+      this._factoryModule = new FactoryModule(this);
+    }
+    return this._factoryModule;
+  }
+
+  /**
    * Lookup the pair address for a token pair via the factory.
    */
   async getPairAddress(tokenA: string, tokenB: string): Promise<string | null> {
-    return this.factory.getPair(tokenA, tokenB);
+    return this.factoryModule().getPairAddress(tokenA, tokenB);
   }
 
   /**
@@ -365,71 +387,18 @@ export class CoralSwapClient {
   }
 
   /**
-   * Poll for transaction completion with configurable retries.
+   * Poll for transaction confirmation using the customized poller.
    */
   private async pollTransaction(
     txHash: string,
   ): Promise<Result<{ txHash: string; ledger: number }>> {
-    const maxRetries = this.config.maxRetries ?? DEFAULTS.maxRetries;
-    const retryDelay = this.config.retryDelayMs ?? DEFAULTS.retryDelayMs;
-
-    for (let attempt = 0; attempt < maxRetries * 10; attempt++) {
-      this.logger?.debug("pollTransaction: polling attempt", {
-        txHash,
-        attempt: attempt + 1,
-        maxAttempts: maxRetries * 10,
-      });
-      const status = await this.withRetry(
-        () => this.server.getTransaction(txHash),
-        "getTransaction",
-      );
-
-      if (status.status === "SUCCESS") {
-        this.logger?.info("pollTransaction: confirmed", {
-          txHash,
-          ledger: status.ledger,
-        });
-        return {
-          success: true,
-          data: {
-            txHash,
-            ledger: status.ledger ?? 0,
-          },
-          txHash,
-        };
-      }
-
-      if (status.status === "FAILED") {
-        this.logger?.error("pollTransaction: transaction failed on-chain", {
-          txHash,
-          status,
-        });
-        return {
-          success: false,
-          error: {
-            code: "TX_FAILED",
-            message: "Transaction failed on-chain",
-            details: { status },
-          },
-          txHash,
-        };
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
-
-    this.logger?.error("pollTransaction: timed out", {
-      txHash,
-      attempts: maxRetries * 10,
+    return this.poller().poll(txHash, {
+      strategy: this.config.pollingStrategy ?? DEFAULTS.pollingStrategy,
+      interval: this.config.pollingIntervalMs ?? DEFAULTS.pollingIntervalMs,
+      maxAttempts: this.config.maxPollingAttempts ?? DEFAULTS.maxPollingAttempts,
+      backoffFactor: this.config.pollingBackoffFactor ?? DEFAULTS.pollingBackoffFactor,
+      maxInterval: this.config.maxPollingIntervalMs ?? DEFAULTS.maxPollingIntervalMs,
     });
-    return {
-      success: false,
-      error: {
-        code: "TX_TIMEOUT",
-        message: `Transaction polling timed out after ${maxRetries * 10} attempts`,
-      },
-      txHash,
-    };
   }
 
   /**

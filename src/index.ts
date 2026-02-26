@@ -83,6 +83,8 @@ export {
   isValidContractId,
   isValidAddress,
   isNativeToken,
+  getNativeAssetContractAddress,
+  resolveTokenIdentifier,
   sortTokens,
   truncateAddress,
   toScAddress,
@@ -99,12 +101,16 @@ export {
   validateNonNegativeAmount,
   validateSlippage,
   validateDistinctTokens,
-} from "@/utils";
+
+  isValidPath,
+} from './utils';
+
 
 export type {
   RetryConfig,
   SimulationResult,
   SimulationResourceEstimate,
+  WaitNextLedgerOptions,
 } from "./utils";
 
 // Errors

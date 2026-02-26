@@ -45,6 +45,7 @@ function buildMockClient(
 
   return {
     config: { defaultSlippageBps: 50 },
+    networkConfig: { networkPassphrase: 'Test SDF Network ; September 2015' },
     getDeadline: jest.fn().mockReturnValue(9999999999),
     getPairAddress: jest.fn().mockImplementation(async (tokenA: string, tokenB: string) => {
       return lookupKey(tokenA, tokenB);
@@ -69,13 +70,15 @@ function buildMockClient(
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// Fixtures (valid Soroban contract IDs so path validation passes)
 // ---------------------------------------------------------------------------
 
-const TOKEN_A = 'GAAA';
-const TOKEN_B = 'GBBB';
-const TOKEN_C = 'GCCC';
-const TOKEN_D = 'GDDD';
+const TOKEN_A = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM';
+const TOKEN_B = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4';
+const TOKEN_C = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M';
+const TOKEN_D = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4';
+/** Valid contract ID not in any mock pair map (for "pair missing" tests) */
+const TOKEN_UNKNOWN = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
 
 const RESERVE = 1_000_000_000n;
 const FEE = 30;
@@ -226,7 +229,7 @@ describe('Multi-hop routing (dedicated methods)', () => {
     it('throws PairNotFoundError if any intermediate pair is missing', async () => {
       await expect(
         swap.getMultiHopQuote({
-          path: [TOKEN_A, TOKEN_B, 'GXXX'],
+          path: [TOKEN_A, TOKEN_B, TOKEN_UNKNOWN],
           amount: 1_000_000n,
           tradeType: TradeType.EXACT_IN,
         }),

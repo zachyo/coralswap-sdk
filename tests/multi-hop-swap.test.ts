@@ -43,6 +43,7 @@ function buildMockClient(
 
   return {
     config: { defaultSlippageBps: 50 },
+    networkConfig: { networkPassphrase: 'Test SDF Network ; September 2015' },
     getDeadline: jest.fn().mockReturnValue(9999999999),
     getPairAddress: jest.fn().mockImplementation(async (tokenA: string, tokenB: string) => {
       return lookupKey(tokenA, tokenB);
