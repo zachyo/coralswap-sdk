@@ -1,3 +1,4 @@
+import { CoralSwapSDKError, mapContractError } from "./errors";
 import {
   Contract,
   SorobanRpc,
@@ -18,22 +19,22 @@ import { withRetry, RetryOptions } from '@/utils/retry';
 import { OrderNotFoundError, InvalidOperationError, ValidationError } from '@/errors';
 import { validateAddress, validatePositiveAmount } from '@/utils/validation';
 export function scValToString(val: xdr.ScVal | undefined): string {
-  if (!val) throw new Error("Missing field");
+  if (!val) throw new CoralSwapSDKError("Missing field");
   const tag = val.switch().name;
   if (tag === 'scvString') return val.str().toString();
   if (tag === 'scvSymbol') return val.sym().toString();
   if (tag === 'scvBytes') return Buffer.from(val.bytes()).toString('utf8');
-  throw new Error(`Expected string/symbol/bytes, got ${tag}`);
+  throw new CoralSwapSDKError(`Expected string/symbol/bytes, got ${tag}`);
 }
 
 export function scValToNumber(val: xdr.ScVal | undefined): number {
-  if (!val) throw new Error("Missing field");
+  if (!val) throw new CoralSwapSDKError("Missing field");
   const tag = val.switch().name;
   if (tag === 'scvU32') return Number(val.u32());
   if (tag === 'scvU64') return Number(val.u64().toBigInt());
   if (tag === 'scvI32') return val.i32();
   if (tag === 'scvI64') return Number(val.i64().toBigInt());
-  throw new Error(`Expected number type, got ${tag}`);
+  throw new CoralSwapSDKError(`Expected number type, got ${tag}`);
 }
 
 export function scValToOptionalNumber(val: xdr.ScVal | undefined): number | undefined {
@@ -43,7 +44,7 @@ export function scValToOptionalNumber(val: xdr.ScVal | undefined): number | unde
 }
 
 export function scValToBigInt(val: xdr.ScVal | undefined): bigint {
-  if (!val) throw new Error("Missing field");
+  if (!val) throw new CoralSwapSDKError("Missing field");
   const tag = val.switch().name;
   if (tag === 'scvI128') {
     const parts = val.i128();
@@ -56,15 +57,15 @@ export function scValToBigInt(val: xdr.ScVal | undefined): bigint {
   if (tag === 'scvI64') return BigInt(val.i64().toBigInt());
   if (tag === 'scvU32') return BigInt(val.u32());
   if (tag === 'scvI32') return BigInt(val.i32());
-  throw new Error(`Expected bigint type, got ${tag}`);
+  throw new CoralSwapSDKError(`Expected bigint type, got ${tag}`);
 }
 
 export function parseCancelResult(result: xdr.ScVal): { refundedAmount: bigint; filledAmount: bigint } {
   if (result.switch().name !== 'scvMap') {
-    throw new Error("Invalid cancel result: expected ScMap");
+    throw new CoralSwapSDKError("Invalid cancel result: expected ScMap");
   }
   const map = result.map();
-  if (!map) throw new Error("Invalid cancel result: expected ScMap");
+  if (!map) throw new CoralSwapSDKError("Invalid cancel result: expected ScMap");
 
   const fields: Record<string, xdr.ScVal> = {};
   for (const entry of map) {
@@ -85,7 +86,7 @@ export function parseCancelResult(result: xdr.ScVal): { refundedAmount: bigint; 
 
 export function parseOrderStatus(result: xdr.ScVal): OrderStatus {
   const map = result.map();
-  if (!map) throw new Error("Invalid order status: expected ScMap");
+  if (!map) throw new CoralSwapSDKError("Invalid order status: expected ScMap");
 
   const fields: Record<string, xdr.ScVal> = {};
   for (const entry of map) {
@@ -100,12 +101,12 @@ export function parseOrderStatus(result: xdr.ScVal): OrderStatus {
 
   const stateStr = scValToString(fields['state']).toLowerCase();
   if (!['open', 'partial', 'filled', 'cancelled', 'expired'].includes(stateStr)) {
-    throw new Error(`Invalid order state: ${stateStr}`);
+    throw new CoralSwapSDKError(`Invalid order state: ${stateStr}`);
   }
 
   const fillPercent = scValToNumber(fields['fill_percent'] ?? fields['fillPercent']);
   if (fillPercent < 0 || fillPercent > 100) {
-    throw new Error(`Invalid fillPercent: ${fillPercent}`);
+    throw new CoralSwapSDKError(`Invalid fillPercent: ${fillPercent}`);
   }
 
   const executionPrice = scValToOptionalNumber(fields['execution_price'] ?? fields['executionPrice']);
@@ -120,8 +121,8 @@ export function parseOrderStatus(result: xdr.ScVal): OrderStatus {
 }
 
 export function scValToStringVec(val: xdr.ScVal | undefined): string[] {
-  if (!val) throw new Error("Missing field");
-  if (val.switch().name !== 'scvVec') throw new Error("Expected Vec");
+  if (!val) throw new CoralSwapSDKError("Missing field");
+  if (val.switch().name !== 'scvVec') throw new CoralSwapSDKError("Expected Vec");
   const vec = val.vec();
   if (!vec) return [];
   return vec.map((v) => scValToString(v));
@@ -129,7 +130,7 @@ export function scValToStringVec(val: xdr.ScVal | undefined): string[] {
 
 export function parseOrderDetails(result: xdr.ScVal): LimitOrderDetails {
   const map = result.map();
-  if (!map) throw new Error("Invalid order details: expected ScMap");
+  if (!map) throw new CoralSwapSDKError("Invalid order details: expected ScMap");
 
   const fields: Record<string, xdr.ScVal> = {};
   for (const entry of map) {
@@ -146,12 +147,12 @@ export function parseOrderDetails(result: xdr.ScVal): LimitOrderDetails {
 
   const stateStr = scValToString(fields['state']).toLowerCase();
   if (!['open', 'partial', 'filled', 'cancelled', 'expired'].includes(stateStr)) {
-    throw new Error(`Invalid order state: ${stateStr}`);
+    throw new CoralSwapSDKError(`Invalid order state: ${stateStr}`);
   }
 
   const fillPercent = scValToNumber(fields['fill_percent'] ?? fields['fillPercent']);
   if (fillPercent < 0 || fillPercent > 100) {
-    throw new Error(`Invalid fillPercent: ${fillPercent}`);
+    throw new CoralSwapSDKError(`Invalid fillPercent: ${fillPercent}`);
   }
 
   const executionPrice = scValToOptionalNumber(fields['execution_price'] ?? fields['executionPrice']);
@@ -188,7 +189,7 @@ export class LimitOrderModule {
     this.client = client;
     const address = contractAddress ?? client.networkConfig.limitOrderAddress;
     if (!address) {
-      throw new Error(
+      throw new CoralSwapSDKError(
         'Limit order contract address is required. Provide one in the constructor or configure limitOrderAddress in the network config.',
       );
     }
@@ -204,7 +205,7 @@ export class LimitOrderModule {
 
   async getLimitOrderStatus(orderId: string): Promise<OrderStatus> {
     if (!orderId || typeof orderId !== 'string') {
-      throw new Error('orderId must be a non-empty string');
+      throw new CoralSwapSDKError('orderId must be a non-empty string');
     }
 
     const op = this.contract.call(
@@ -236,7 +237,7 @@ export class LimitOrderModule {
     );
 
     if (!SorobanRpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      throw new Error(`Failed to read order status: simulation did not succeed`);
+      throw new CoralSwapSDKError(`Failed to read order status: simulation did not succeed`);
     }
 
     return parseOrderStatus(sim.result.retval);
@@ -272,7 +273,7 @@ export class LimitOrderModule {
 
   async cancelLimitOrder(orderId: string, signer?: string): Promise<CancelResult> {
     if (!orderId || typeof orderId !== 'string') {
-      throw new Error('orderId must be a non-empty string');
+      throw new CoralSwapSDKError('orderId must be a non-empty string');
     }
 
     const status = await this.getLimitOrderStatus(orderId);
@@ -321,7 +322,7 @@ export class LimitOrderModule {
     );
 
     if (!SorobanRpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      throw new Error(
+      throw new CoralSwapSDKError(
         `Failed to cancel order ${orderId}: simulation did not succeed`,
       );
     }
@@ -331,7 +332,7 @@ export class LimitOrderModule {
     const submitResult = await this.client.submitTransaction([op]);
 
     if (!submitResult.success || !submitResult.data) {
-      throw new Error(
+      throw new CoralSwapSDKError(
         `Failed to cancel order ${orderId}: ${submitResult.error?.message ?? 'Unknown error'}`,
       );
     }
@@ -400,7 +401,7 @@ export class LimitOrderModule {
     );
 
     if (!SorobanRpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      throw new Error('Failed to place limit order: simulation did not succeed');
+      throw new CoralSwapSDKError('Failed to place limit order: simulation did not succeed');
     }
 
     const orderId = scValToString(sim.result.retval);
@@ -408,7 +409,7 @@ export class LimitOrderModule {
     const submitResult = await this.client.submitTransaction([op]);
 
     if (!submitResult.success || !submitResult.data) {
-      throw new Error(
+      throw new CoralSwapSDKError(
         `Failed to place limit order: ${submitResult.error?.message ?? 'Unknown error'}`,
       );
     }
@@ -418,7 +419,7 @@ export class LimitOrderModule {
 
   async getLimitOrder(orderId: string): Promise<LimitOrderDetails> {
     if (!orderId || typeof orderId !== 'string') {
-      throw new Error('orderId must be a non-empty string');
+      throw new CoralSwapSDKError('orderId must be a non-empty string');
     }
 
     const op = this.contract.call(
@@ -450,7 +451,7 @@ export class LimitOrderModule {
     );
 
     if (!SorobanRpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      throw new Error(`Failed to read order ${orderId}: simulation did not succeed`);
+      throw new CoralSwapSDKError(`Failed to read order ${orderId}: simulation did not succeed`);
     }
 
     return parseOrderDetails(sim.result.retval);
@@ -488,7 +489,7 @@ export class LimitOrderModule {
     );
 
     if (!SorobanRpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      throw new Error(`Failed to fetch orders for ${address}: simulation did not succeed`);
+      throw new CoralSwapSDKError(`Failed to fetch orders for ${address}: simulation did not succeed`);
     }
 
     const orderIds = scValToStringVec(sim.result.retval);
